@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Translate & Flip</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;600&family=IBM+Plex+Sans+Arabic:wght@300;400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0f0f14;
+      --surface: #1a1a24;
+      --surface2: #22222f;
+      --accent: #6c63ff;
+      --accent2: #ff6584;
+      --text: #e8e8f0;
+      --muted: #7a7a9a;
+      --border: #2e2e40;
+      --success: #4ade80;
+      --warning: #fbbf24;
+      --radius: 10px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'IBM Plex Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-icon {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+    }
+
+    .logo-text {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      color: var(--text);
+    }
+
+    .logo-sub {
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 1px;
+    }
+
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* Direction indicator */
+    .direction-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+    }
+
+    .dir-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .dir-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dir-lang {
+      flex: 1;
+      text-align: center;
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      transition: all 0.2s;
+    }
+
+    .dir-lang.active-source {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .dir-lang.active-target {
+      border-color: var(--accent2);
+      color: var(--accent2);
+    }
+
+    .swap-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 14px;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+
+    .swap-btn:hover {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+      transform: rotate(180deg);
+    }
+
+    /* Options */
+    .options-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+    }
+
+    .options-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .option-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 0;
+    }
+
+    .option-row + .option-row {
+      border-top: 1px solid var(--border);
+    }
+
+    .option-text {
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    .option-sub {
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* Toggle switch */
+    .toggle {
+      position: relative;
+      width: 36px;
+      height: 20px;
+    }
+
+    .toggle input { display: none; }
+
+    .toggle-track {
+      width: 100%;
+      height: 100%;
+      background: var(--surface2);
+      border-radius: 10px;
+      border: 1.5px solid var(--border);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .toggle-thumb {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 14px;
+      height: 14px;
+      background: var(--muted);
+      border-radius: 50%;
+      transition: all 0.2s;
+      pointer-events: none;
+    }
+
+    .toggle input:checked ~ .toggle-track {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .toggle input:checked ~ .toggle-thumb {
+      background: white;
+      transform: translateX(16px);
+    }
+
+    /* Scope selector */
+    .scope-select {
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 12px;
+      padding: 5px 8px;
+      outline: none;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+
+    .scope-select:focus { border-color: var(--accent); }
+
+    /* Action buttons */
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .btn {
+      padding: 11px 14px;
+      border-radius: var(--radius);
+      border: none;
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.18s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), #8b85ff);
+      color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px rgba(108,99,255,0.4);
+    }
+
+    .btn-secondary {
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      color: var(--text);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    /* Progress */
+    .progress-wrap {
+      display: none;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+    }
+
+    .progress-wrap.visible { display: block; }
+
+    .progress-label {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .progress-bar {
+      height: 4px;
+      background: var(--surface2);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 2px;
+      transition: width 0.3s ease;
+      width: 0%;
+    }
+
+    .progress-detail {
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    /* Log */
+    .log-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .log-header {
+      padding: 8px 12px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .log-clear {
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      transition: color 0.2s;
+    }
+
+    .log-clear:hover { color: var(--accent2); }
+
+    .log-body {
+      max-height: 130px;
+      overflow-y: auto;
+      padding: 8px 12px;
+    }
+
+    .log-entry {
+      font-size: 11px;
+      line-height: 1.6;
+      color: var(--muted);
+      padding: 1px 0;
+    }
+
+    .log-entry.success { color: var(--success); }
+    .log-entry.error { color: var(--accent2); }
+    .log-entry.info { color: var(--accent); }
+
+    /* API key section */
+    .api-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+    }
+
+    .api-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .api-input-wrap {
+      display: flex;
+      gap: 6px;
+    }
+
+    .api-input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: monospace;
+      font-size: 11px;
+      padding: 7px 10px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .api-input:focus { border-color: var(--accent); }
+
+    .api-save {
+      padding: 7px 12px;
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .api-save:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .api-hint {
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    .api-hint a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* Animations */
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .spinning { animation: spin 0.8s linear infinite; display: inline-block; }
+
+    /* Glossary */
+    .glossary-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .glossary-header {
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+    }
+
+    .glossary-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+    }
+
+    .glossary-sub {
+      font-size: 11px;
+      color: var(--text);
+      margin-top: 3px;
+    }
+
+    .glossary-toggle-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--muted);
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 11px;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+
+    .glossary-toggle-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .glossary-body {
+      padding: 0 14px 14px;
+      border-top: 1px solid var(--border);
+    }
+
+    .glossary-body.collapsed {
+      display: none;
+    }
+
+    .glossary-textarea {
+      width: 100%;
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: monospace;
+      font-size: 11px;
+      line-height: 1.6;
+      padding: 10px;
+      resize: vertical;
+      outline: none;
+      margin-top: 10px;
+      transition: border-color 0.2s;
+    }
+
+    .glossary-textarea:focus {
+      border-color: var(--accent);
+    }
+
+    .glossary-textarea::placeholder {
+      color: var(--muted);
+      opacity: 0.7;
+    }
+
+    .glossary-hint {
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 7px;
+      line-height: 1.5;
+    }
+
+    .glossary-counter {
+      font-size: 10px;
+      color: var(--muted);
+      text-align: right;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🌐</div>
+    <div>
+      <div class="logo-text">Translate & Flip</div>
+      <div class="logo-sub">English ↔ Arabic · Powered by AI</div>
+    </div>
+  </div>
+</header>
+
+<div class="content">
+
+  <!-- Direction -->
+  <div class="direction-card">
+    <div class="dir-label">Translation Direction</div>
+    <div class="dir-toggle">
+      <div class="dir-lang active-source" id="srcLang">🇬🇧 English</div>
+      <button class="swap-btn" onclick="swapLanguages()" title="Swap languages">⇄</button>
+      <div class="dir-lang active-target" id="tgtLang">🇸🇦 Arabic</div>
+    </div>
+  </div>
+
+  <!-- Options -->
+  <div class="options-card">
+    <div class="options-label">Options</div>
+
+    <div class="option-row">
+      <div>
+        <div class="option-text">Flip text direction (RTL/LTR)</div>
+        <div class="option-sub">Aligns text for Arabic (right) or English (left)</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="flipDir" checked />
+        <div class="toggle-track"></div>
+        <div class="toggle-thumb"></div>
+      </label>
+    </div>
+
+    <div class="option-row">
+      <div>
+        <div class="option-text">Mirror slide layout</div>
+        <div class="option-sub">Repositions elements for RTL reading flow</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="mirrorLayout" checked />
+        <div class="toggle-track"></div>
+        <div class="toggle-thumb"></div>
+      </label>
+    </div>
+
+    <div class="option-row">
+      <div>
+        <div class="option-text">Apply to</div>
+      </div>
+      <select class="scope-select" id="scope">
+        <option value="all">All slides</option>
+        <option value="current">Current slide only</option>
+        <option value="selected">Selected slides</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Glossary -->
+  <div class="glossary-card">
+    <div class="glossary-header" onclick="toggleGlossary()">
+      <div>
+        <div class="glossary-label">Glossary &amp; Instructions</div>
+        <div class="glossary-sub">Terms, brand names, or rules for the translator</div>
+      </div>
+      <button class="glossary-toggle-btn" id="glossaryToggleBtn">&#9662;</button>
+    </div>
+    <div class="glossary-body collapsed" id="glossaryBody">
+      <textarea
+        class="glossary-textarea"
+        id="glossaryInput"
+        rows="6"
+        placeholder="Examples:
+- CEO should always translate to: المدير التنفيذي
+- Vision 2030 should stay as-is, do not translate it
+- Use formal Arabic (Fusha), not colloquial dialect
+- Product names like HorizonX should not be translated
+- Keep all numbers in Western numerals (1, 2, 3)"
+      ></textarea>
+      <div class="glossary-counter" id="glossaryCounter">0 characters</div>
+      <div class="glossary-hint">These instructions are passed directly to the AI with every translation request.</div>
+    </div>
+  </div>
+
+    <!-- Progress -->
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-label">
+      <span id="progressText">Translating...</span>
+      <span id="progressPct">0%</span>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+    <div class="progress-detail" id="progressDetail">Initializing…</div>
+  </div>
+
+  <!-- Actions -->
+  <div class="actions">
+    <button class="btn btn-primary" id="translateBtn" onclick="runTranslation()">
+      <span>🌐</span> Translate Presentation
+    </button>
+    <button class="btn btn-secondary" id="flipOnlyBtn" onclick="flipOnly()">
+      <span>↔️</span> Flip Layout Only (No Translation)
+    </button>
+  </div>
+
+  <!-- Log -->
+  <div class="log-wrap">
+    <div class="log-header">
+      Activity Log
+      <span class="log-clear" onclick="clearLog()">Clear</span>
+    </div>
+    <div class="log-body" id="logBody">
+      <div class="log-entry info">Add-in loaded. Ready to translate.</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ─── State ───────────────────────────────────────────────────────────────────
+  let sourceLang = 'en';
+  let targetLang = 'ar';
+  let isRunning = false;
+
+  // ─── Office Init ─────────────────────────────────────────────────────────────
+  Office.onReady((info) => {
+    if (info.host === Office.HostType.PowerPoint) {
+      log('PowerPoint detected. Ready.', 'success');
+    } else {
+      log('Not running in PowerPoint.', 'error');
+    }
+  });
+
+  // ─── API Key ─────────────────────────────────────────────────────────────────
+
+  }
+
+
+  // ─── Language Swap ────────────────────────────────────────────────────────────
+  function swapLanguages() {
+    [sourceLang, targetLang] = [targetLang, sourceLang];
+    const srcEl = document.getElementById('srcLang');
+    const tgtEl = document.getElementById('tgtLang');
+    if (sourceLang === 'en') {
+      srcEl.textContent = '🇬🇧 English';
+      tgtEl.textContent = '🇸🇦 Arabic';
+    } else {
+      srcEl.textContent = '🇸🇦 Arabic';
+      tgtEl.textContent = '🇬🇧 English';
+    }
+    log(`Direction set: ${sourceLang.toUpperCase()} → ${targetLang.toUpperCase()}`, 'info');
+  }
+
+  // ─── Glossary helpers ─────────────────────────────────────────────────────────
+  function getGlossary() {
+    return (document.getElementById('glossaryInput').value || '').trim();
+  }
+
+  function toggleGlossary() {
+    const body = document.getElementById('glossaryBody');
+    const btn = document.getElementById('glossaryToggleBtn');
+    const collapsed = body.classList.toggle('collapsed');
+    btn.innerHTML = collapsed ? '&#9662;' : '&#9652;';
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const ta = document.getElementById('glossaryInput');
+    if (ta) {
+      ta.addEventListener('input', () => {
+        const n = ta.value.length;
+        document.getElementById('glossaryCounter').textContent = n + ' character' + (n !== 1 ? 's' : '');
+      });
+    }
+    const saved = localStorage.getItem('translateGlossary');
+    if (saved && ta) { ta.value = saved; ta.dispatchEvent(new Event('input')); }
+  });
+
+  setInterval(() => {
+    const ta = document.getElementById('glossaryInput');
+    if (ta) localStorage.setItem('translateGlossary', ta.value);
+  }, 2000);
+
+  // ─── Translation (via /api/translate proxy) ───────────────────────────────
+  async function translateText(text) {
+    if (!text || !text.trim()) return text;
+    const glossary = getGlossary();
+
+    const res = await fetch('/api/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, sourceLang, targetLang, glossary })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.error || `Server error: ${res.status}`);
+    }
+    const data = await res.json();
+    return data.translated;
+  }
+
+  // ─── Run Translation ──────────────────────────────────────────────────────────
+  async function runTranslation() {
+    if (isRunning) return;
+    isRunning = true;
+    setButtons(true);
+    showProgress(true);
+
+    try {
+      await PowerPoint.run(async (context) => {
+        const presentation = context.presentation;
+        presentation.load('slides');
+        await context.sync();
+
+        const slides = presentation.slides;
+        slides.load('items');
+        await context.sync();
+
+        const scope = document.getElementById('scope').value;
+        let targetSlides = [];
+
+        if (scope === 'all') {
+          targetSlides = slides.items;
+        } else if (scope === 'current') {
+          // Get current slide index via selection
+          presentation.load('activeSlide');
+          await context.sync();
+          targetSlides = [presentation.activeSlide];
+        } else {
+          targetSlides = slides.items; // fallback to all
+        }
+
+        const total = targetSlides.length;
+        let done = 0;
+
+        for (const slide of targetSlides) {
+          slide.load('shapes');
+          await context.sync();
+
+          const shapes = slide.shapes;
+          shapes.load('items');
+          await context.sync();
+
+          setProgress(done, total, `Slide ${done + 1} of ${total}`);
+
+          for (const shape of shapes.items) {
+            if (shape.textFrame) {
+              try {
+                shape.textFrame.load('textRanges,paragraphs');
+                await context.sync();
+
+                const paragraphs = shape.textFrame.paragraphs;
+                paragraphs.load('items');
+                await context.sync();
+
+                for (const para of paragraphs.items) {
+                  para.load('textRanges');
+                  await context.sync();
+
+                  const ranges = para.textRanges;
+                  ranges.load('items');
+                  await context.sync();
+
+                  for (const range of ranges.items) {
+                    range.load('text');
+                    await context.sync();
+
+                    const original = range.text;
+                    if (original && original.trim()) {
+                      try {
+                        const translated = await translateText(original);
+                        range.text = translated;
+                        log(`✓ "${original.substring(0,30)}..." → translated`, 'success');
+                      } catch (e) {
+                        log(`✗ Failed: "${original.substring(0,20)}..." — ${e.message}`, 'error');
+                      }
+                    }
+                  }
+
+                  // Apply RTL/LTR direction
+                  if (document.getElementById('flipDir').checked) {
+                    if (targetLang === 'ar') {
+                      para.getRange().font.set({ name: 'Arial' });
+                      // Set paragraph direction to RTL
+                      try { para.alignment = 'Right'; } catch(e) {}
+                    } else {
+                      try { para.alignment = 'Left'; } catch(e) {}
+                    }
+                  }
+                }
+
+                await context.sync();
+
+              } catch (e) {
+                // Shape may not have text — skip
+              }
+            }
+
+            // Mirror layout if enabled
+            if (document.getElementById('mirrorLayout').checked) {
+              await mirrorShapePosition(shape, context);
+            }
+          }
+
+          done++;
+          setProgress(done, total, `Slide ${done} of ${total} done`);
+          await context.sync();
+        }
+
+        log(`✅ Translation complete! ${total} slide(s) processed.`, 'success');
+      });
+    } catch (e) {
+      log(`Error: ${e.message}`, 'error');
+    } finally {
+      isRunning = false;
+      setButtons(false);
+      showProgress(false);
+    }
+  }
+
+  // ─── Flip Layout Only ─────────────────────────────────────────────────────────
+  async function flipOnly() {
+    if (isRunning) return;
+    isRunning = true;
+    setButtons(true);
+    log('Flipping layout...', 'info');
+
+    try {
+      await PowerPoint.run(async (context) => {
+        const slides = context.presentation.slides;
+        slides.load('items');
+        await context.sync();
+
+        for (const slide of slides.items) {
+          slide.load('shapes');
+          await context.sync();
+          slide.shapes.load('items');
+          await context.sync();
+
+          for (const shape of slide.shapes.items) {
+            await mirrorShapePosition(shape, context);
+          }
+          await context.sync();
+        }
+        log('✅ Layout flipped!', 'success');
+      });
+    } catch (e) {
+      log(`Error: ${e.message}`, 'error');
+    } finally {
+      isRunning = false;
+      setButtons(false);
+    }
+  }
+
+  // ─── Mirror Shape Position ────────────────────────────────────────────────────
+  async function mirrorShapePosition(shape, context) {
+    try {
+      shape.load('left,width');
+      await context.sync();
+      // Standard slide width is 10 inches = 914400 EMUs, but Office JS uses points
+      // Typical slide width: 960 px / 10 in. We use 10 inches = 720pt
+      const slideWidth = 720; // points (10 inches)
+      const newLeft = slideWidth - shape.left - shape.width;
+      if (newLeft >= 0) shape.left = newLeft;
+    } catch (e) {
+      // Shapes without position — skip
+    }
+  }
+
+  // ─── UI Helpers ───────────────────────────────────────────────────────────────
+  function setButtons(disabled) {
+    document.getElementById('translateBtn').disabled = disabled;
+    document.getElementById('flipOnlyBtn').disabled = disabled;
+  }
+
+  function showProgress(visible) {
+    document.getElementById('progressWrap').classList.toggle('visible', visible);
+    if (!visible) {
+      document.getElementById('progressFill').style.width = '0%';
+    }
+  }
+
+  function setProgress(done, total, detail) {
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    document.getElementById('progressFill').style.width = pct + '%';
+    document.getElementById('progressPct').textContent = pct + '%';
+    document.getElementById('progressDetail').textContent = detail;
+  }
+
+  function log(msg, type = '') {
+    const body = document.getElementById('logBody');
+    const entry = document.createElement('div');
+    entry.className = `log-entry ${type}`;
+    const time = new Date().toLocaleTimeString('en', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    entry.textContent = `[${time}] ${msg}`;
+    body.appendChild(entry);
+    body.scrollTop = body.scrollHeight;
+  }
+
+  function clearLog() {
+    document.getElementById('logBody').innerHTML = '';
+  }
+</script>
+</body>
+</html>
