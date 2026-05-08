@@ -689,6 +689,15 @@
   Office.onReady((info) => {
     if (info.host === Office.HostType.PowerPoint) {
       log('PowerPoint detected. Ready.', 'success');
+      // Test API connection on load
+      fetch('/api/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'test', sourceLang: 'en', targetLang: 'ar', glossary: '' })
+      }).then(r => r.json()).then(d => {
+        if (d.translated) log('✓ Translation API connected.', 'success');
+        else log('⚠️ API error: ' + (d.error || 'unknown'), 'error');
+      }).catch(e => log('⚠️ Cannot reach translation API: ' + e.message, 'error'));
     } else {
       log('Not running in PowerPoint.', 'error');
     }
@@ -821,9 +830,10 @@
                   try {
                     const translated = await translateText(original);
                     range.text = translated;
-                    log(`✓ "${original.substring(0,25)}…"`, 'success');
+                    log(`✓ "${original.substring(0,25).replace(/\n/g,' ')}…"`, 'success');
                   } catch(e) {
-                    log(`✗ ${e.message}`, 'error');
+                    log(`✗ Translation failed: ${e.message}`, 'error');
+                    console.error('Translation error:', e);
                   }
                 }
               }
