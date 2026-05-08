@@ -793,35 +793,21 @@
 
   // ─── Process all shapes on a slide ───────────────────────────────────────────
   async function processSlideShapes(slide, context, doTranslate, doMirror, doFlipDir) {
-    slide.load('shapes');
-    await context.sync();
-    slide.shapes.load('items');
+    // Load shapes with all needed properties in one go
+    slide.load('shapes/items/textFrame/hasText');
     await context.sync();
 
     for (const shape of slide.shapes.items) {
-      // Handle text translation
-      if (doTranslate || doFlipDir) {
+
+      // ── Text processing ──
+      if ((doTranslate || doFlipDir) && shape.textFrame && shape.textFrame.hasText) {
         try {
-          shape.load('textFrame');
-          await context.sync();
-          const tf = shape.textFrame;
-          tf.load('paragraphs');
-          await context.sync();
-          tf.paragraphs.load('items');
+          // Load all paragraphs and their text ranges together
+          shape.textFrame.load('paragraphs/items/textRanges/items/text');
           await context.sync();
 
-          for (const para of tf.paragraphs.items) {
-            para.load('textRanges');
-            await context.sync();
-            para.textRanges.load('items');
-            await context.sync();
-
-            // Collect all text in paragraph first
+          for (const para of shape.textFrame.paragraphs.items) {
             const ranges = para.textRanges.items;
-            for (const range of ranges) {
-              range.load('text');
-            }
-            await context.sync();
 
             if (doTranslate) {
               for (const range of ranges) {
@@ -830,44 +816,36 @@
                   try {
                     const translated = await translateText(original);
                     range.text = translated;
-                    log(`✓ "${original.substring(0,25).replace(/\n/g,' ')}…"`, 'success');
+                    log(`✓ "${original.substring(0,30).replace(/\n/g,' ')}"`, 'success');
                   } catch(e) {
-                    log(`✗ Translation failed: ${e.message}`, 'error');
-                    console.error('Translation error:', e);
+                    log(`✗ Failed: ${e.message}`, 'error');
                   }
                 }
               }
-              await context.sync();
             }
 
-            // Flip text alignment
+            // Flip paragraph alignment
             if (doFlipDir) {
-              try {
-                para.load('alignment');
-                await context.sync();
-                para.alignment = targetLang === 'ar'
-                  ? PowerPoint.ParagraphHorizontalAlignment.right
-                  : PowerPoint.ParagraphHorizontalAlignment.left;
-                await context.sync();
-              } catch(e) { /* alignment not supported on this shape */ }
+              para.alignment = targetLang === 'ar'
+                ? PowerPoint.ParagraphHorizontalAlignment.right
+                : PowerPoint.ParagraphHorizontalAlignment.left;
             }
           }
+          await context.sync();
         } catch(e) {
-          // shape has no text frame — skip
+          log(`⚠ Shape skipped: ${e.message}`, '');
         }
       }
 
-      // Mirror shape position
+      // ── Mirror position ──
       if (doMirror) {
         try {
-          shape.load('left,width,geometryType');
+          shape.load('left,width');
           await context.sync();
-          // Slide width in points: default PowerPoint slide = 720pt (10 inches)
-          const slideWidthPt = 720;
-          const newLeft = slideWidthPt - shape.left - shape.width;
-          shape.left = Math.max(0, newLeft);
+          const slideWidthPt = 720; // 10 inches in points
+          shape.left = Math.max(0, slideWidthPt - shape.left - shape.width);
           await context.sync();
-        } catch(e) { /* skip unmovable shapes */ }
+        } catch(e) { /* non-movable shape, skip */ }
       }
     }
   }
