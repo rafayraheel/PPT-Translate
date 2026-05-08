@@ -758,6 +758,110 @@
     return data.translated;
   }
 
+  // ─── Get slides based on scope ───────────────────────────────────────────────
+  async function getSlidesToProcess(context) {
+    const scope = document.getElementById('scope').value;
+    const presentation = context.presentation;
+    presentation.load('slides');
+    await context.sync();
+    presentation.slides.load('items');
+    await context.sync();
+    const allSlides = presentation.slides.items;
+
+    if (scope === 'current') {
+      // Use selected slides via getSelectedDataAsync fallback
+      try {
+        const selected = presentation.getSelectedSlides();
+        selected.load('items');
+        await context.sync();
+        if (selected.items.length > 0) return selected.items;
+      } catch(e) {}
+      // fallback: just first slide if selection API unavailable
+      return allSlides.slice(0, 1);
+    }
+    return allSlides;
+  }
+
+  // ─── Process all shapes on a slide ───────────────────────────────────────────
+  async function processSlideShapes(slide, context, doTranslate, doMirror, doFlipDir) {
+    slide.load('shapes');
+    await context.sync();
+    slide.shapes.load('items');
+    await context.sync();
+
+    for (const shape of slide.shapes.items) {
+      // Handle text translation
+      if (doTranslate || doFlipDir) {
+        try {
+          shape.load('textFrame');
+          await context.sync();
+          const tf = shape.textFrame;
+          tf.load('paragraphs');
+          await context.sync();
+          tf.paragraphs.load('items');
+          await context.sync();
+
+          for (const para of tf.paragraphs.items) {
+            para.load('textRanges');
+            await context.sync();
+            para.textRanges.load('items');
+            await context.sync();
+
+            // Collect all text in paragraph first
+            const ranges = para.textRanges.items;
+            for (const range of ranges) {
+              range.load('text');
+            }
+            await context.sync();
+
+            if (doTranslate) {
+              for (const range of ranges) {
+                const original = range.text;
+                if (original && original.trim()) {
+                  try {
+                    const translated = await translateText(original);
+                    range.text = translated;
+                    log(`✓ "${original.substring(0,25)}…"`, 'success');
+                  } catch(e) {
+                    log(`✗ ${e.message}`, 'error');
+                  }
+                }
+              }
+              await context.sync();
+            }
+
+            // Flip text alignment
+            if (doFlipDir) {
+              try {
+                para.load('alignment');
+                await context.sync();
+                para.alignment = targetLang === 'ar'
+                  ? PowerPoint.ParagraphHorizontalAlignment.right
+                  : PowerPoint.ParagraphHorizontalAlignment.left;
+                await context.sync();
+              } catch(e) { /* alignment not supported on this shape */ }
+            }
+          }
+        } catch(e) {
+          // shape has no text frame — skip
+        }
+      }
+
+      // Mirror shape position
+      if (doMirror) {
+        try {
+          shape.load('left,width,geometryType');
+          await context.sync();
+          // Slide width in points: default PowerPoint slide = 720pt (10 inches)
+          const slideWidthPt = 720;
+          const newLeft = slideWidthPt - shape.left - shape.width;
+          shape.left = Math.max(0, newLeft);
+          await context.sync();
+        } catch(e) { /* skip unmovable shapes */ }
+      }
+    }
+  }
+
   // ─── Run Translation ──────────────────────────────────────────────────────────
   async function runTranslation() {
     if (isRunning) return;
@@ -765,110 +869,24 @@
     setButtons(true);
     showProgress(true);
 
+    const doFlipDir = document.getElementById('flipDir').checked;
+    const doMirror = document.getElementById('mirrorLayout').checked;
+
     try {
       await PowerPoint.run(async (context) => {
-        const presentation = context.presentation;
-        presentation.load('slides');
-        await context.sync();
+        const slides = await getSlidesToProcess(context);
+        const total = slides.length;
+        log(`Starting translation of ${total} slide(s)...`, 'info');
 
-        const slides = presentation.slides;
-        slides.load('items');
-        await context.sync();
-
-        const scope = document.getElementById('scope').value;
-        let targetSlides = [];
-
-        if (scope === 'all') {
-          targetSlides = slides.items;
-        } else if (scope === 'current') {
-          // Get current slide index via selection
-          presentation.load('activeSlide');
-          await context.sync();
-          targetSlides = [presentation.activeSlide];
-        } else {
-          targetSlides = slides.items; // fallback to all
+        for (let i = 0; i < slides.length; i++) {
+          setProgress(i, total, `Slide ${i + 1} of ${total}…`);
+          await processSlideShapes(slides[i], context, true, doMirror, doFlipDir);
+          setProgress(i + 1, total, `Slide ${i + 1} of ${total} done`);
         }
 
-        const total = targetSlides.length;
-        let done = 0;
-
-        for (const slide of targetSlides) {
-          slide.load('shapes');
-          await context.sync();
-
-          const shapes = slide.shapes;
-          shapes.load('items');
-          await context.sync();
-
-          setProgress(done, total, `Slide ${done + 1} of ${total}`);
-
-          for (const shape of shapes.items) {
-            if (shape.textFrame) {
-              try {
-                shape.textFrame.load('textRanges,paragraphs');
-                await context.sync();
-
-                const paragraphs = shape.textFrame.paragraphs;
-                paragraphs.load('items');
-                await context.sync();
-
-                for (const para of paragraphs.items) {
-                  para.load('textRanges');
-                  await context.sync();
-
-                  const ranges = para.textRanges;
-                  ranges.load('items');
-                  await context.sync();
-
-                  for (const range of ranges.items) {
-                    range.load('text');
-                    await context.sync();
-
-                    const original = range.text;
-                    if (original && original.trim()) {
-                      try {
-                        const translated = await translateText(original);
-                        range.text = translated;
-                        log(`✓ "${original.substring(0,30)}..." → translated`, 'success');
-                      } catch (e) {
-                        log(`✗ Failed: "${original.substring(0,20)}..." — ${e.message}`, 'error');
-                      }
-                    }
-                  }
-
-                  // Apply RTL/LTR direction
-                  if (document.getElementById('flipDir').checked) {
-                    if (targetLang === 'ar') {
-                      para.getRange().font.set({ name: 'Arial' });
-                      // Set paragraph direction to RTL
-                      try { para.alignment = 'Right'; } catch(e) {}
-                    } else {
-                      try { para.alignment = 'Left'; } catch(e) {}
-                    }
-                  }
-                }
-
-                await context.sync();
-
-              } catch (e) {
-                // Shape may not have text — skip
-              }
-            }
-
-            // Mirror layout if enabled
-            if (document.getElementById('mirrorLayout').checked) {
-              await mirrorShapePosition(shape, context);
-            }
-          }
-
-          done++;
-          setProgress(done, total, `Slide ${done} of ${total} done`);
-          await context.sync();
-        }
-
-        log(`✅ Translation complete! ${total} slide(s) processed.`, 'success');
+        log(`✅ Done! ${total} slide(s) translated.`, 'success');
       });
-    } catch (e) {
+    } catch(e) {
       log(`Error: ${e.message}`, 'error');
     } finally {
       isRunning = false;
@@ -883,46 +901,26 @@
     isRunning = true;
     setButtons(true);
     log('Flipping layout...', 'info');
+    showProgress(true);
 
     try {
       await PowerPoint.run(async (context) => {
-        const slides = context.presentation.slides;
-        slides.load('items');
-        await context.sync();
+        const slides = await getSlidesToProcess(context);
+        const total = slides.length;
 
-        for (const slide of slides.items) {
-          slide.load('shapes');
-          await context.sync();
-          slide.shapes.load('items');
-          await context.sync();
-
-          for (const shape of slide.shapes.items) {
-            await mirrorShapePosition(shape, context);
-          }
-          await context.sync();
+        for (let i = 0; i < slides.length; i++) {
+          setProgress(i, total, `Slide ${i + 1} of ${total}…`);
+          await processSlideShapes(slides[i], context, false, true, document.getElementById('flipDir').checked);
+          setProgress(i + 1, total, `Slide ${i + 1} done`);
         }
-        log('✅ Layout flipped!', 'success');
+        log(`✅ Layout flipped on ${total} slide(s)!`, 'success');
       });
-    } catch (e) {
+    } catch(e) {
       log(`Error: ${e.message}`, 'error');
     } finally {
       isRunning = false;
       setButtons(false);
-    }
-  }
-
-  // ─── Mirror Shape Position ────────────────────────────────────────────────────
-  async function mirrorShapePosition(shape, context) {
-    try {
-      shape.load('left,width');
-      await context.sync();
-      // Standard slide width is 10 inches = 914400 EMUs, but Office JS uses points
-      // Typical slide width: 960 px / 10 in. We use 10 inches = 720pt
-      const slideWidth = 720; // points (10 inches)
-      const newLeft = slideWidth - shape.left - shape.width;
-      if (newLeft >= 0) shape.left = newLeft;
-    } catch (e) {
-      // Shapes without position — skip
+      showProgress(false);
     }
   }
 
