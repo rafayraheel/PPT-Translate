@@ -816,55 +816,80 @@
     slide.shapes.load('items');
     await context.sync();
 
-    for (const shape of slide.shapes.items) {
+    const shapeCount = slide.shapes.items.length;
+    log(`  Found ${shapeCount} shapes on slide`, 'info');
+
+    for (let si = 0; si < slide.shapes.items.length; si++) {
+      const shape = slide.shapes.items[si];
 
       // ── Text processing ──
       if (doTranslate || doFlipDir) {
+        let hasText = false;
         try {
           shape.load('textFrame/hasText');
           await context.sync();
+          hasText = shape.textFrame.hasText;
+          log(`  Shape ${si+1}/${shapeCount}: hasText=${hasText}`, 'info');
+        } catch(e) {
+          log(`  Shape ${si+1}: load hasText failed: ${e.message}`, 'error');
+          // Try alternative: just attempt to load paragraphs directly
+          hasText = true; // assume it might have text, try anyway
+        }
 
-          if (!shape.textFrame.hasText) continue;
+        if (hasText) {
+          try {
+            shape.textFrame.load('paragraphs');
+            await context.sync();
+            shape.textFrame.paragraphs.load('items');
+            await context.sync();
+            const paraCount = shape.textFrame.paragraphs.items.length;
+            log(`  Shape ${si+1}: ${paraCount} paragraphs`, 'info');
 
-          shape.textFrame.load('paragraphs');
-          await context.sync();
-          shape.textFrame.paragraphs.load('items');
-          await context.sync();
+            for (let pi = 0; pi < paraCount; pi++) {
+              const para = shape.textFrame.paragraphs.items[pi];
 
-          for (const para of shape.textFrame.paragraphs.items) {
-            // Translate text
-            if (doTranslate) {
-              try {
-                para.load('textRanges');
-                await context.sync();
-                para.textRanges.load('items');
-                await context.sync();
-                for (const range of para.textRanges.items) {
-                  range.load('text');
+              if (doTranslate) {
+                try {
+                  para.load('textRanges');
                   await context.sync();
-                  const original = range.text;
-                  if (original && original.trim()) {
-                    const translated = await translateText(original);
-                    range.text = translated;
-                    log(`✓ "${original.substring(0,30).replace(/\n/g,' ')}"`, 'success');
+                  para.textRanges.load('items');
+                  await context.sync();
+                  const rangeCount = para.textRanges.items.length;
+
+                  for (let ri = 0; ri < rangeCount; ri++) {
+                    const range = para.textRanges.items[ri];
+                    range.load('text');
+                    await context.sync();
+                    const original = range.text;
+                    log(`  Para ${pi+1} Range ${ri+1}: "${original ? original.substring(0,20) : '(empty)'}"`, 'info');
+                    if (original && original.trim()) {
+                      try {
+                        const translated = await translateText(original);
+                        range.text = translated;
+                        await context.sync();
+                        log(`  ✓ Translated: "${translated.substring(0,20)}"`, 'success');
+                      } catch(e) {
+                        log(`  ✗ Translate API error: ${e.message}`, 'error');
+                      }
+                    }
                   }
+                } catch(e) {
+                  log(`  ✗ Range load error para ${pi+1}: ${e.message}`, 'error');
                 }
-                await context.sync();
-              } catch(e) {
-                log(`✗ Text error: ${e.message}`, 'error');
+              }
+
+              if (doFlipDir) {
+                try {
+                  para.alignment = targetLang === 'ar' ? 'Right' : 'Left';
+                  await context.sync();
+                } catch(e) {
+                  log(`  ⚠ Alignment error: ${e.message}`, 'error');
+                }
               }
             }
-
-            // Flip alignment — use plain string values compatible with PowerPoint Online
-            if (doFlipDir) {
-              try {
-                para.alignment = targetLang === 'ar' ? 'Right' : 'Left';
-                await context.sync();
-              } catch(e) { /* ignore alignment errors */ }
-            }
+          } catch(e) {
+            log(`  ✗ Paragraph load error shape ${si+1}: ${e.message}`, 'error');
           }
-        } catch(e) {
-          // shape has no text or not supported — skip silently
         }
       }
 
@@ -874,10 +899,11 @@
           shape.load('left,width');
           await context.sync();
           const slideWidthPt = 720;
-          const newLeft = slideWidthPt - shape.left - shape.width;
-          shape.left = Math.max(0, newLeft);
+          shape.left = Math.max(0, slideWidthPt - shape.left - shape.width);
           await context.sync();
-        } catch(e) { /* non-movable shape */ }
+        } catch(e) {
+          log(`  ⚠ Mirror error shape ${si+1}: ${e.message}`, 'error');
+        }
       }
     }
   }
