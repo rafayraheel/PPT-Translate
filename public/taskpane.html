@@ -882,17 +882,19 @@
           const pf = tf.textRange.paragraphFormat;
           pf.load('horizontalAlignment');
           await context.sync();
-          const current = pf.horizontalAlignment;
-          // Only flip if currently Left or Right — don't touch Center/Justify
-          if (current === 'Left' || current === 'left') {
+          const current = String(pf.horizontalAlignment || '').toLowerCase();
+          log(`  Alignment value: "${current}"`, 'info');
+
+          if (current === 'left') {
             pf.horizontalAlignment = 'Right';
             await context.sync();
-          } else if (current === 'Right' || current === 'right') {
+          } else if (current === 'right') {
             pf.horizontalAlignment = 'Left';
             await context.sync();
-          }
-          // null alignment means inherited — set based on target language
-          else if (current === null || current === undefined) {
+          } else if (current === 'center' || current === 'justify') {
+            // Preserve — do not touch centered or justified text
+          } else {
+            // null / undefined / mixed / unknown — default to target language direction
             pf.horizontalAlignment = targetLang === 'ar' ? 'Right' : 'Left';
             await context.sync();
           }
