@@ -1,5 +1,4 @@
 export default async function handler(req, res) {
-  // Only allow POST
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -18,10 +17,20 @@ export default async function handler(req, res) {
   const srcName = sourceLang === 'en' ? 'English' : 'Arabic';
   const tgtName = targetLang === 'ar' ? 'Arabic' : 'English';
 
-  let systemPrompt = `You are a professional translator. Translate the following ${srcName} text to ${tgtName}. Return ONLY the translated text — no explanations, no quotes, no extra formatting.`;
+  // Strong default instructions that prevent common issues
+  let systemPrompt = `You are a professional translator specializing in business presentations.
+Translate the following ${srcName} text to ${tgtName}.
+
+STRICT RULES — follow these exactly:
+- Return ONLY the translated text. No explanations, no quotes, no extra formatting.
+- Keep all numbers in Western/Latin numerals (1, 2, 3 — NOT ١, ٢, ٣).
+- Keep all currency symbols ($, €, £, %) exactly as-is. Do not translate or remove them.
+- Keep all abbreviations like $3B, $2B, $1B, USD, GDP exactly as-is.
+- Keep proper nouns, brand names, and product names unchanged unless instructed.
+- Preserve all line breaks exactly as they appear in the original.`;
 
   if (glossary && glossary.trim()) {
-    systemPrompt += `\n\nFollow these glossary rules and translation instructions exactly:\n${glossary.trim()}`;
+    systemPrompt += `\n\nADDITIONAL INSTRUCTIONS FROM USER (override defaults if conflicting):\n${glossary.trim()}`;
   }
 
   try {
@@ -33,7 +42,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
-        temperature: 0.2,
+        temperature: 0.1,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: text }
