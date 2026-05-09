@@ -876,21 +876,17 @@
         } catch(e) { /* skip */ }
       }
 
-      // Flip alignment — set on the textRange's paragraphFormat
+      // Flip alignment — must load paragraphFormat first, then set
       if (doFlipDir) {
         try {
-          tf.textRange.paragraphFormat.horizontalAlignment =
-            targetLang === 'ar' ? PowerPoint.ParagraphHorizontalAlignment.right
-                                : PowerPoint.ParagraphHorizontalAlignment.left;
+          const pf = tf.textRange.paragraphFormat;
+          pf.load('horizontalAlignment');
           await context.sync();
-        } catch(e1) {
-          // Fallback to string value
-          try {
-            tf.textRange.paragraphFormat.horizontalAlignment = targetLang === 'ar' ? 'Right' : 'Left';
-            await context.sync();
-          } catch(e2) {
-            log(`  ⚠ Align error: ${e2.message}`, 'error');
-          }
+          pf.horizontalAlignment = targetLang === 'ar' ? 'Right' : 'Left';
+          await context.sync();
+          log(`  ✓ Alignment set to ${targetLang === 'ar' ? 'Right' : 'Left'}`, 'success');
+        } catch(e) {
+          log(`  ⚠ Align error: ${e.message}`, 'error');
         }
       }
     }
