@@ -816,99 +816,94 @@
     slide.shapes.load('items');
     await context.sync();
 
-    const shapeCount = slide.shapes.items.length;
-    log(`  Found ${shapeCount} shapes on slide`, 'info');
+    const shapes = slide.shapes.items;
+    log(`  Found ${shapes.length} shapes`, 'info');
 
-    for (let si = 0; si < slide.shapes.items.length; si++) {
-      const shape = slide.shapes.items[si];
+    // Step 1: load textFrame on all shapes at once, then sync
+    for (const shape of shapes) {
+      shape.load('type');
+    }
+    await context.sync();
 
-      // ── Text processing ──
-      if (doTranslate || doFlipDir) {
-        let hasText = false;
+    // Step 2: for non-image shapes, load textFrame
+    const textFrames = [];
+    for (const shape of shapes) {
+      if (shape.type !== 'Image' && shape.type !== 'Unsupported') {
+        const tf = shape.textFrame;
+        tf.load('hasText');
+        textFrames.push({ shape, tf });
+      }
+    }
+    await context.sync();
+
+    // Step 3: for shapes with text, load textRange
+    const textRanges = [];
+    for (const { shape, tf } of textFrames) {
+      if (tf.hasText) {
+        tf.load('textRange');
+        textRanges.push({ shape, tf });
+      }
+    }
+    await context.sync();
+
+    // Step 4: load the actual text
+    for (const { tf } of textRanges) {
+      tf.textRange.load('text');
+    }
+    await context.sync();
+
+    // Step 5: translate and write back
+    for (let i = 0; i < textRanges.length; i++) {
+      const { shape, tf } = textRanges[i];
+      const original = tf.textRange.text;
+      log(`  Shape ${i+1}: "${original.substring(0,30).replace(/\n/g,' ')}"`, 'info');
+
+      if (doTranslate && original && original.trim()) {
         try {
-          shape.load('textFrame/hasText');
+          const translated = await translateText(original);
+          tf.textRange.text = translated;
           await context.sync();
-          hasText = shape.textFrame.hasText;
-          log(`  Shape ${si+1}/${shapeCount}: hasText=${hasText}`, 'info');
+          log(`  ✓ → "${translated.substring(0,30)}"`, 'success');
         } catch(e) {
-          log(`  Shape ${si+1}: load hasText failed: ${e.message}`, 'error');
-          // Try alternative: just attempt to load paragraphs directly
-          hasText = true; // assume it might have text, try anyway
-        }
-
-        if (hasText) {
-          try {
-            const tf = shape.textFrame;
-            tf.load('paragraphs');
-            await context.sync();
-            tf.paragraphs.load('items');
-            await context.sync();
-            const paraCount = tf.paragraphs.items.length;
-            log(`  Shape ${si+1}: ${paraCount} paragraphs`, 'info');
-
-            for (let pi = 0; pi < paraCount; pi++) {
-              const para = tf.paragraphs.items[pi];
-
-              if (doTranslate) {
-                try {
-                  para.load('textRanges');
-                  await context.sync();
-                  para.textRanges.load('items');
-                  await context.sync();
-                  const rangeCount = para.textRanges.items.length;
-
-                  for (let ri = 0; ri < rangeCount; ri++) {
-                    const range = para.textRanges.items[ri];
-                    range.load('text');
-                    await context.sync();
-                    const original = range.text;
-                    log(`  Para ${pi+1} Range ${ri+1}: "${original ? original.substring(0,20) : '(empty)'}"`, 'info');
-                    if (original && original.trim()) {
-                      try {
-                        const translated = await translateText(original);
-                        range.text = translated;
-                        await context.sync();
-                        log(`  ✓ Translated: "${translated.substring(0,20)}"`, 'success');
-                      } catch(e) {
-                        log(`  ✗ Translate API error: ${e.message}`, 'error');
-                      }
-                    }
-                  }
-                } catch(e) {
-                  log(`  ✗ Range load error para ${pi+1}: ${e.message}`, 'error');
-                }
-              }
-
-              if (doFlipDir) {
-                try {
-                  para.alignment = targetLang === 'ar' ? 'Right' : 'Left';
-                  await context.sync();
-                } catch(e) {
-                  log(`  ⚠ Alignment error: ${e.message}`, 'error');
-                }
-              }
-            }
-          } catch(e) {
-            log(`  ✗ Paragraph load error shape ${si+1}: ${e.message}`, 'error');
-          }
+          log(`  ✗ Translate error: ${e.message}`, 'error');
         }
       }
 
-      // ── Mirror position ──
+      // Flip alignment via paragraphFormat
+      if (doFlipDir) {
+        try {
+          tf.textRange.load('paragraphFormat');
+          await context.sync();
+          tf.textRange.paragraphFormat.horizontalAlignment = targetLang === 'ar' ? 'Right' : 'Left';
+          await context.sync();
+        } catch(e) {
+          log(`  ⚠ Align error: ${e.message}`, 'error');
+        }
+      }
+
+      // Mirror position
       if (doMirror) {
         try {
           shape.load('left,width');
           await context.sync();
-          const slideWidthPt = 720;
-          shape.left = Math.max(0, slideWidthPt - shape.left - shape.width);
+          shape.left = Math.max(0, 720 - shape.left - shape.width);
           await context.sync();
-        } catch(e) {
-          log(`  ⚠ Mirror error shape ${si+1}: ${e.message}`, 'error');
-        }
+        } catch(e) { /* skip */ }
+      }
+    }
+
+    // Mirror non-text shapes too
+    if (doMirror) {
+      for (const shape of shapes) {
+        try {
+          shape.load('left,width');
+          await context.sync();
+          shape.left = Math.max(0, 720 - shape.left - shape.width);
+          await context.sync();
+        } catch(e) { /* skip */ }
       }
     }
   }
-
   // ─── Run Translation ──────────────────────────────────────────────────────────
   async function runTranslation() {
     if (isRunning) return;
