@@ -852,56 +852,74 @@
     }
     await context.sync();
 
-    // Step 5: translate and write back
+    // Step 5: translate, fix font, fix alignment
     for (let i = 0; i < textRanges.length; i++) {
-      const { shape, tf } = textRanges[i];
+      const { tf } = textRanges[i];
       const original = tf.textRange.text;
-      log(`  Shape ${i+1}: "${original.substring(0,30).replace(/\n/g,' ')}"`, 'info');
 
       if (doTranslate && original && original.trim()) {
         try {
           const translated = await translateText(original);
           tf.textRange.text = translated;
           await context.sync();
-          log(`  ✓ → "${translated.substring(0,30)}"`, 'success');
+          log(`  ✓ "${original.substring(0,20)}" → "${translated.substring(0,20)}"`, 'success');
         } catch(e) {
           log(`  ✗ Translate error: ${e.message}`, 'error');
         }
       }
 
-      // Flip alignment via paragraphFormat
-      if (doFlipDir) {
+      // Fix font to Arial for clean Arabic rendering
+      if (doTranslate && targetLang === 'ar') {
         try {
-          tf.textRange.load('paragraphFormat');
-          await context.sync();
-          tf.textRange.paragraphFormat.horizontalAlignment = targetLang === 'ar' ? 'Right' : 'Left';
-          await context.sync();
-        } catch(e) {
-          log(`  ⚠ Align error: ${e.message}`, 'error');
-        }
-      }
-
-      // Mirror position
-      if (doMirror) {
-        try {
-          shape.load('left,width');
-          await context.sync();
-          shape.left = Math.max(0, 720 - shape.left - shape.width);
+          tf.textRange.font.name = 'Arial';
           await context.sync();
         } catch(e) { /* skip */ }
+      }
+
+      // Flip alignment — set on the textRange's paragraphFormat
+      if (doFlipDir) {
+        try {
+          tf.textRange.paragraphFormat.horizontalAlignment =
+            targetLang === 'ar' ? PowerPoint.ParagraphHorizontalAlignment.right
+                                : PowerPoint.ParagraphHorizontalAlignment.left;
+          await context.sync();
+        } catch(e1) {
+          // Fallback to string value
+          try {
+            tf.textRange.paragraphFormat.horizontalAlignment = targetLang === 'ar' ? 'Right' : 'Left';
+            await context.sync();
+          } catch(e2) {
+            log(`  ⚠ Align error: ${e2.message}`, 'error');
+          }
+        }
       }
     }
 
-    // Mirror non-text shapes too
+    // Step 6: mirror ALL shapes (text and non-text) by loading positions in batch
     if (doMirror) {
+      // Get slide width from presentation
+      let slideWidth = 720; // default 10 inches in points
+      try {
+        context.presentation.load('width');
+        await context.sync();
+        slideWidth = context.presentation.width || 720;
+      } catch(e) { /* use default */ }
+
       for (const shape of shapes) {
         try {
           shape.load('left,width');
-          await context.sync();
-          shape.left = Math.max(0, 720 - shape.left - shape.width);
-          await context.sync();
         } catch(e) { /* skip */ }
       }
+      await context.sync();
+
+      for (const shape of shapes) {
+        try {
+          const newLeft = slideWidth - shape.left - shape.width;
+          shape.left = Math.max(0, newLeft);
+        } catch(e) { /* skip */ }
+      }
+      await context.sync();
+      log(`  Mirrored ${shapes.length} shapes (slide width: ${slideWidth}pt)`, 'info');
     }
   }
   // ─── Run Translation ──────────────────────────────────────────────────────────
