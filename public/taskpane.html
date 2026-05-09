@@ -876,15 +876,26 @@
         } catch(e) { /* skip */ }
       }
 
-      // Flip alignment — must load paragraphFormat first, then set
+      // Flip alignment — only swap Left↔Right, preserve Center/Justify
       if (doFlipDir) {
         try {
           const pf = tf.textRange.paragraphFormat;
           pf.load('horizontalAlignment');
           await context.sync();
-          pf.horizontalAlignment = targetLang === 'ar' ? 'Right' : 'Left';
-          await context.sync();
-          log(`  ✓ Alignment set to ${targetLang === 'ar' ? 'Right' : 'Left'}`, 'success');
+          const current = pf.horizontalAlignment;
+          // Only flip if currently Left or Right — don't touch Center/Justify
+          if (current === 'Left' || current === 'left') {
+            pf.horizontalAlignment = 'Right';
+            await context.sync();
+          } else if (current === 'Right' || current === 'right') {
+            pf.horizontalAlignment = 'Left';
+            await context.sync();
+          }
+          // null alignment means inherited — set based on target language
+          else if (current === null || current === undefined) {
+            pf.horizontalAlignment = targetLang === 'ar' ? 'Right' : 'Left';
+            await context.sync();
+          }
         } catch(e) {
           log(`  ⚠ Align error: ${e.message}`, 'error');
         }
