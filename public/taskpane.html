@@ -838,15 +838,16 @@
 
         if (hasText) {
           try {
-            shape.textFrame.load('paragraphs');
+            const tf = shape.textFrame;
+            tf.load('paragraphs');
             await context.sync();
-            shape.textFrame.paragraphs.load('items');
+            tf.paragraphs.load('items');
             await context.sync();
-            const paraCount = shape.textFrame.paragraphs.items.length;
+            const paraCount = tf.paragraphs.items.length;
             log(`  Shape ${si+1}: ${paraCount} paragraphs`, 'info');
 
             for (let pi = 0; pi < paraCount; pi++) {
-              const para = shape.textFrame.paragraphs.items[pi];
+              const para = tf.paragraphs.items[pi];
 
               if (doTranslate) {
                 try {
