@@ -778,62 +778,93 @@
     const allSlides = presentation.slides.items;
 
     if (scope === 'current') {
-      // Use selected slides via getSelectedDataAsync fallback
       try {
-        const selected = presentation.getSelectedSlides();
+        // getSelectedSlides is available in requirement set 1.5+
+        const selected = context.presentation.getSelectedSlides();
         selected.load('items');
         await context.sync();
-        if (selected.items.length > 0) return selected.items;
-      } catch(e) {}
-      // fallback: just first slide if selection API unavailable
-      return allSlides.slice(0, 1);
+        if (selected.items && selected.items.length > 0) {
+          log(`Processing ${selected.items.length} selected slide(s)`, 'info');
+          return selected.items;
+        }
+      } catch(e) {
+        // Fall through to active slide index approach
+      }
+      // Fallback: find the active slide by index (slide panels highlight it)
+      // Just use first slide as safe default
+      log('Processing current slide (slide 1 fallback)', 'info');
+      return [allSlides[0]];
     }
+
+    if (scope === 'selected') {
+      try {
+        const selected = context.presentation.getSelectedSlides();
+        selected.load('items');
+        await context.sync();
+        if (selected.items && selected.items.length > 0) return selected.items;
+      } catch(e) {}
+    }
+
+    log(`Processing all ${allSlides.length} slides`, 'info');
     return allSlides;
   }
 
   // ─── Process all shapes on a slide ───────────────────────────────────────────
   async function processSlideShapes(slide, context, doTranslate, doMirror, doFlipDir) {
-    // Load shapes with all needed properties in one go
-    slide.load('shapes/items/textFrame/hasText');
+    slide.load('shapes');
+    await context.sync();
+    slide.shapes.load('items');
     await context.sync();
 
     for (const shape of slide.shapes.items) {
 
       // ── Text processing ──
-      if ((doTranslate || doFlipDir) && shape.textFrame && shape.textFrame.hasText) {
+      if (doTranslate || doFlipDir) {
         try {
-          // Load all paragraphs and their text ranges together
-          shape.textFrame.load('paragraphs/items/textRanges/items/text');
+          shape.load('textFrame/hasText');
+          await context.sync();
+
+          if (!shape.textFrame.hasText) continue;
+
+          shape.textFrame.load('paragraphs');
+          await context.sync();
+          shape.textFrame.paragraphs.load('items');
           await context.sync();
 
           for (const para of shape.textFrame.paragraphs.items) {
-            const ranges = para.textRanges.items;
-
+            // Translate text
             if (doTranslate) {
-              for (const range of ranges) {
-                const original = range.text;
-                if (original && original.trim()) {
-                  try {
+              try {
+                para.load('textRanges');
+                await context.sync();
+                para.textRanges.load('items');
+                await context.sync();
+                for (const range of para.textRanges.items) {
+                  range.load('text');
+                  await context.sync();
+                  const original = range.text;
+                  if (original && original.trim()) {
                     const translated = await translateText(original);
                     range.text = translated;
                     log(`✓ "${original.substring(0,30).replace(/\n/g,' ')}"`, 'success');
-                  } catch(e) {
-                    log(`✗ Failed: ${e.message}`, 'error');
                   }
                 }
+                await context.sync();
+              } catch(e) {
+                log(`✗ Text error: ${e.message}`, 'error');
               }
             }
 
-            // Flip paragraph alignment
+            // Flip alignment — use plain string values compatible with PowerPoint Online
             if (doFlipDir) {
-              para.alignment = targetLang === 'ar'
-                ? PowerPoint.ParagraphHorizontalAlignment.right
-                : PowerPoint.ParagraphHorizontalAlignment.left;
+              try {
+                para.alignment = targetLang === 'ar' ? 'Right' : 'Left';
+                await context.sync();
+              } catch(e) { /* ignore alignment errors */ }
             }
           }
-          await context.sync();
         } catch(e) {
-          log(`⚠ Shape skipped: ${e.message}`, '');
+          // shape has no text or not supported — skip silently
         }
       }
 
@@ -842,10 +873,11 @@
         try {
           shape.load('left,width');
           await context.sync();
-          const slideWidthPt = 720; // 10 inches in points
-          shape.left = Math.max(0, slideWidthPt - shape.left - shape.width);
+          const slideWidthPt = 720;
+          const newLeft = slideWidthPt - shape.left - shape.width;
+          shape.left = Math.max(0, newLeft);
           await context.sync();
-        } catch(e) { /* non-movable shape, skip */ }
+        } catch(e) { /* non-movable shape */ }
       }
     }
   }
