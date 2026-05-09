@@ -876,35 +876,35 @@
         } catch(e) { /* skip */ }
       }
 
-      // Flip alignment — only swap Left↔Right, preserve Center/Justify
+      // Flip alignment — ONLY flip explicitly Right-aligned text to Left (or vice versa)
+      // Never touch Left, Center, Justify, null — these are layout decisions by the designer
       if (doFlipDir) {
         try {
           const pf = tf.textRange.paragraphFormat;
           pf.load('horizontalAlignment');
           await context.sync();
           const current = pf.horizontalAlignment;
-          log(`  Alignment value: "${current}"`, 'info');
-          // PowerPoint Online returns numeric codes: 1=Left, 2=Center, 3=Right, 4=Justify
-          // or string values: "Left", "Center", "Right", "Justify"
-          const isLeft   = current === 1 || current === 'Left'    || current === 'left';
-          const isRight  = current === 3 || current === 'Right'   || current === 'right';
-          const isCenter = current === 2 || current === 'Center'  || current === 'center';
-          const isJustify= current === 4 || current === 'Justify' || current === 'justify';
+          // Only act on explicitly set Right (3) when going to English
+          // or explicitly set Left (1) ... but even then, be conservative.
+          // PowerPoint stores "inherited" alignment as null — leave it alone.
+          // Only flip if EXPLICITLY Right→Left or Left→Right based on target.
+          const isExplicitLeft  = current === 1 || current === 'Left';
+          const isExplicitRight = current === 3 || current === 'Right';
 
-          if (isCenter || isJustify) {
-            // Preserve — do not touch centered or justified text
-            log(`  Skipping alignment (${current} = center/justify)`, 'info');
-          } else if (isLeft) {
+          if (targetLang === 'ar' && isExplicitRight) {
+            // Was explicitly Right in English source — keep Right for Arabic too
+            // (Right is already correct for Arabic)
+          } else if (targetLang === 'en' && isExplicitRight) {
+            // Was Right in Arabic — keep it (Right→Right for English is fine for RTL content)
+          } else if (targetLang === 'ar' && isExplicitLeft) {
+            // Only flip explicit Left→Right for Arabic
             pf.horizontalAlignment = 'Right';
             await context.sync();
-          } else if (isRight) {
+          } else if (targetLang === 'en' && isExplicitRight) {
             pf.horizontalAlignment = 'Left';
             await context.sync();
-          } else {
-            // null / unknown — set based on target language
-            pf.horizontalAlignment = targetLang === 'ar' ? 'Right' : 'Left';
-            await context.sync();
           }
+          // Everything else (null, Center, Justify, numeric 2/4) — leave untouched
         } catch(e) {
           log(`  ⚠ Align error: ${e.message}`, 'error');
         }
