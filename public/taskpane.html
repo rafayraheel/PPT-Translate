@@ -882,19 +882,26 @@
           const pf = tf.textRange.paragraphFormat;
           pf.load('horizontalAlignment');
           await context.sync();
-          const current = String(pf.horizontalAlignment || '').toLowerCase();
+          const current = pf.horizontalAlignment;
           log(`  Alignment value: "${current}"`, 'info');
+          // PowerPoint Online returns numeric codes: 1=Left, 2=Center, 3=Right, 4=Justify
+          // or string values: "Left", "Center", "Right", "Justify"
+          const isLeft   = current === 1 || current === 'Left'    || current === 'left';
+          const isRight  = current === 3 || current === 'Right'   || current === 'right';
+          const isCenter = current === 2 || current === 'Center'  || current === 'center';
+          const isJustify= current === 4 || current === 'Justify' || current === 'justify';
 
-          if (current === 'left') {
+          if (isCenter || isJustify) {
+            // Preserve — do not touch centered or justified text
+            log(`  Skipping alignment (${current} = center/justify)`, 'info');
+          } else if (isLeft) {
             pf.horizontalAlignment = 'Right';
             await context.sync();
-          } else if (current === 'right') {
+          } else if (isRight) {
             pf.horizontalAlignment = 'Left';
             await context.sync();
-          } else if (current === 'center' || current === 'justify') {
-            // Preserve — do not touch centered or justified text
           } else {
-            // null / undefined / mixed / unknown — default to target language direction
+            // null / unknown — set based on target language
             pf.horizontalAlignment = targetLang === 'ar' ? 'Right' : 'Left';
             await context.sync();
           }
