@@ -378,83 +378,6 @@
     .log-entry.error { color: var(--accent2); }
     .log-entry.info { color: var(--accent); }
 
-    /* API key section */
-    .api-section {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 14px;
-    }
-
-    .api-label {
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: var(--muted);
-      margin-bottom: 8px;
-    }
-
-    .api-input-wrap {
-      display: flex;
-      gap: 6px;
-    }
-
-    .api-input {
-      flex: 1;
-      background: var(--surface2);
-      border: 1.5px solid var(--border);
-      border-radius: 6px;
-      color: var(--text);
-      font-family: monospace;
-      font-size: 11px;
-      padding: 7px 10px;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-
-    .api-input:focus { border-color: var(--accent); }
-
-    .api-save {
-      padding: 7px 12px;
-      background: var(--surface2);
-      border: 1.5px solid var(--border);
-      border-radius: 6px;
-      color: var(--text);
-      font-family: 'IBM Plex Sans', sans-serif;
-      font-size: 11px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-      white-space: nowrap;
-    }
-
-    .api-save:hover {
-      border-color: var(--accent);
-      color: var(--accent);
-    }
-
-    .api-hint {
-      font-size: 10px;
-      color: var(--muted);
-      margin-top: 6px;
-    }
-
-    .api-hint a {
-      color: var(--accent);
-      text-decoration: none;
-    }
-
-    /* Scrollbar */
-    ::-webkit-scrollbar { width: 4px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-    /* Animations */
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    .spinning { animation: spin 0.8s linear infinite; display: inline-block; }
-
     /* Glossary */
     .glossary-card {
       background: var(--surface);
@@ -552,6 +475,11 @@
       text-align: right;
       margin-top: 4px;
     }
+    
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
   </style>
 </head>
 <body>
@@ -568,7 +496,6 @@
 
 <div class="content">
 
-  <!-- Direction -->
   <div class="direction-card">
     <div class="dir-label">Translation Direction</div>
     <div class="dir-toggle">
@@ -578,7 +505,6 @@
     </div>
   </div>
 
-  <!-- Options -->
   <div class="options-card">
     <div class="options-label">Options</div>
 
@@ -618,7 +544,6 @@
     </div>
   </div>
 
-  <!-- Glossary -->
   <div class="glossary-card">
     <div class="glossary-header" onclick="toggleGlossary()">
       <div>
@@ -644,8 +569,7 @@
     </div>
   </div>
 
-    <!-- Progress -->
-  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-wrap" id="progressWrap">
     <div class="progress-label">
       <span id="progressText">Translating...</span>
       <span id="progressPct">0%</span>
@@ -656,7 +580,6 @@
     <div class="progress-detail" id="progressDetail">Initializing…</div>
   </div>
 
-  <!-- Actions -->
   <div class="actions">
     <button class="btn btn-primary" id="translateBtn" onclick="runTranslation()">
       <span>🌐</span> Translate Presentation
@@ -666,7 +589,6 @@
     </button>
   </div>
 
-  <!-- Log -->
   <div class="log-wrap">
     <div class="log-header">
       Activity Log
@@ -779,7 +701,6 @@
 
     if (scope === 'current') {
       try {
-        // getSelectedSlides is available in requirement set 1.5+
         const selected = context.presentation.getSelectedSlides();
         selected.load('items');
         await context.sync();
@@ -787,11 +708,7 @@
           log(`Processing ${selected.items.length} selected slide(s)`, 'info');
           return selected.items;
         }
-      } catch(e) {
-        // Fall through to active slide index approach
-      }
-      // Fallback: find the active slide by index (slide panels highlight it)
-      // Just use first slide as safe default
+      } catch(e) {}
       log('Processing current slide (slide 1 fallback)', 'info');
       return [allSlides[0]];
     }
@@ -819,42 +736,56 @@
     const shapes = slide.shapes.items;
     log(`  Found ${shapes.length} shapes`, 'info');
 
-    // Step 1: load textFrame on all shapes at once, then sync
+    // 1. Load basic shape data to determine eligibility safely
     for (const shape of shapes) {
-      shape.load('type');
+      shape.load(['type', 'left', 'width']);
     }
     await context.sync();
 
-    // Step 2: for non-image shapes, load textFrame
-    const textFrames = [];
+    const textFramesToProcess = [];
+    const mirrorShapes = [];
+
+    // 2. Safely categorize shapes
     for (const shape of shapes) {
-      if (shape.type !== 'Image' && shape.type !== 'Unsupported') {
-        const tf = shape.textFrame;
-        tf.load('hasText');
-        textFrames.push({ shape, tf });
+      const typeStr = String(shape.type).toLowerCase();
+
+      // Mirror Logic: Anything with a physical dimension can be flipped
+      if (typeof shape.left === 'number' && typeof shape.width === 'number') {
+        mirrorShapes.push(shape);
       }
-    }
-    await context.sync();
 
-    // Step 3: for shapes with text, load textRange
-    const textRanges = [];
-    for (const { shape, tf } of textFrames) {
+      // Skip Text Logic for unsafe shapes to prevent InvalidArgument crash
+      if (
+        shape.type === 'Group' || typeStr === 'group' ||
+        shape.type === 'Image' || typeStr === 'image' ||
+        shape.type === 'Line'  || typeStr === 'line'  ||
+        shape.type === 'Unsupported'
+      ) {
+        continue;
+      }
+
+      // Attempt to load textFrame only on safe objects
+      let tf;
+      try {
+        tf = shape.textFrame;
+        tf.load(['hasText', 'textRange']);
+        await context.sync();
+      } catch(e) {
+        continue; // Not actually a text shape
+      }
+
       if (tf.hasText) {
-        tf.load('textRange');
-        textRanges.push({ shape, tf });
+        textFramesToProcess.push(tf);
       }
     }
-    await context.sync();
 
-    // Step 4: load the actual text
-    for (const { tf } of textRanges) {
-      tf.textRange.load('text');
-    }
-    await context.sync();
+    // 3. Process Text Ranges
+    for (const tf of textFramesToProcess) {
+      tf.textRange.load(['text', 'paragraphFormat']);
+      await context.sync();
+      tf.textRange.paragraphFormat.load('horizontalAlignment');
+      await context.sync();
 
-    // Step 5: translate, fix font, fix alignment
-    for (let i = 0; i < textRanges.length; i++) {
-      const { tf } = textRanges[i];
       const original = tf.textRange.text;
 
       if (doTranslate && original && original.trim()) {
@@ -862,13 +793,12 @@
           const translated = await translateText(original);
           tf.textRange.text = translated;
           await context.sync();
-          log(`  ✓ "${original.substring(0,20)}" → "${translated.substring(0,20)}"`, 'success');
+          log(`  ✓ "${original.substring(0,15)}..." translated.`, 'success');
         } catch(e) {
           log(`  ✗ Translate error: ${e.message}`, 'error');
         }
       }
 
-      // Fix font to Arial for clean Arabic rendering
       if (doTranslate && targetLang === 'ar') {
         try {
           tf.textRange.font.name = 'Arial';
@@ -876,68 +806,51 @@
         } catch(e) { /* skip */ }
       }
 
-      // Flip alignment — ONLY flip explicitly Right-aligned text to Left (or vice versa)
-      // Never touch Left, Center, Justify, null — these are layout decisions by the designer
       if (doFlipDir) {
         try {
-          const pf = tf.textRange.paragraphFormat;
-          pf.load('horizontalAlignment');
-          await context.sync();
-          const current = pf.horizontalAlignment;
-          // Only act on explicitly set Right (3) when going to English
-          // or explicitly set Left (1) ... but even then, be conservative.
-          // PowerPoint stores "inherited" alignment as null — leave it alone.
-          // Only flip if EXPLICITLY Right→Left or Left→Right based on target.
+          const current = tf.textRange.paragraphFormat.horizontalAlignment;
           const isExplicitLeft  = current === 1 || current === 'Left';
           const isExplicitRight = current === 3 || current === 'Right';
 
-          if (targetLang === 'ar' && isExplicitRight) {
-            // Was explicitly Right in English source — keep Right for Arabic too
-            // (Right is already correct for Arabic)
-          } else if (targetLang === 'en' && isExplicitRight) {
-            // Was Right in Arabic — keep it (Right→Right for English is fine for RTL content)
-          } else if (targetLang === 'ar' && isExplicitLeft) {
-            // Only flip explicit Left→Right for Arabic
-            pf.horizontalAlignment = 'Right';
+          if (targetLang === 'ar' && isExplicitLeft) {
+            tf.textRange.paragraphFormat.horizontalAlignment = 'Right';
             await context.sync();
           } else if (targetLang === 'en' && isExplicitRight) {
-            pf.horizontalAlignment = 'Left';
+            tf.textRange.paragraphFormat.horizontalAlignment = 'Left';
             await context.sync();
           }
-          // Everything else (null, Center, Justify, numeric 2/4) — leave untouched
-        } catch(e) {
-          log(`  ⚠ Align error: ${e.message}`, 'error');
-        }
+        } catch(e) { /* skip align issues silently */ }
       }
     }
 
-    // Step 6: mirror ALL shapes (text and non-text) by loading positions in batch
-    if (doMirror) {
-      // Get slide width from presentation
-      let slideWidth = 720; // default 10 inches in points
-      try {
-        context.presentation.load('width');
+    // 4. Process Mirroring (Layout Flip)
+    if (doMirror && mirrorShapes.length > 0) {
+      let minLeft = Infinity;
+      let maxRight = -Infinity;
+
+      for (const s of mirrorShapes) {
+         if (typeof s.left === 'number' && typeof s.width === 'number') {
+            minLeft = Math.min(minLeft, s.left);
+            maxRight = Math.max(maxRight, s.left + s.width);
+         }
+      }
+
+      if (isFinite(minLeft) && isFinite(maxRight)) {
+        const axis = (minLeft + maxRight) / 2;
+        
+        for (const s of mirrorShapes) {
+          try {
+            if (typeof s.left === 'number' && typeof s.width === 'number') {
+               s.left = axis * 2 - (s.left + s.width);
+            }
+          } catch(e) { /* skip */ }
+        }
         await context.sync();
-        slideWidth = context.presentation.width || 720;
-      } catch(e) { /* use default */ }
-
-      for (const shape of shapes) {
-        try {
-          shape.load('left,width');
-        } catch(e) { /* skip */ }
+        log(`  Layout mirrored for ${mirrorShapes.length} objects.`, 'info');
       }
-      await context.sync();
-
-      for (const shape of shapes) {
-        try {
-          const newLeft = slideWidth - shape.left - shape.width;
-          shape.left = Math.max(0, newLeft);
-        } catch(e) { /* skip */ }
-      }
-      await context.sync();
-      log(`  Mirrored ${shapes.length} shapes (slide width: ${slideWidth}pt)`, 'info');
     }
   }
+
   // ─── Run Translation ──────────────────────────────────────────────────────────
   async function runTranslation() {
     if (isRunning) return;
